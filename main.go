@@ -11,11 +11,16 @@ import (
 	"math/rand"
 	"net"
 	"time"
+
+	"github.com/go-daq/smbus"
+	"github.com/go-daq/smbus/sensor/tsl2591"
 )
 
 var (
-	addr  = flag.String("addr", ":10000", "[ip]:port for TCP server")
-	debug = flag.Bool("dbg", false, "(debugging only)")
+	addr    = flag.String("addr", ":10000", "[ip]:port for TCP server")
+	busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
+	busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
+	debug   = flag.Bool("dbg", false, "(debugging only)")
 )
 
 func main() {
@@ -66,7 +71,19 @@ func fetchData() (Sensors, error) {
 	if *debug {
 		return genData()
 	}
-	panic("not implemented")
+	bus, err := smbus.Open(*busID, uint8(*busAddr))
+	if err != nil {
+		return Sensors{}, err
+	}
+	defer bus.Close()
+
+	data := Sensors{Timestamp: time.Now().UTC()}
+	err = data.read(bus, uint8(*busAddr))
+	if err != nil {
+		return data, err
+	}
+
+	return data, nil
 }
 
 type Sensors struct {
@@ -77,10 +94,54 @@ type Sensors struct {
 	Bme       Bme       `json:"bme280"`
 }
 
+func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
+	var err error
+	err = s.Tsl.read(bus, addr, 0x0)
+	if err != nil {
+		return err
+	}
+	err = s.Sht31.read(bus, addr, 0x1)
+	if err != nil {
+		return err
+	}
+	err = s.Si7021[0].read(bus, addr, 0x2)
+	if err != nil {
+		return err
+	}
+	err = s.Si7021[1].read(bus, addr, 0x3)
+	if err != nil {
+		return err
+	}
+	err = s.Bme.read(bus, addr, 0x4)
+	if err != nil {
+		return err
+	}
+	return err
+}
+
 type Tsl struct {
 	Lux  float64 `json:"lux"`
-	Full float64 `json:"full"`
-	IR   float64 `json:"ir"`
+	Full uint16  `json:"full"`
+	IR   uint16  `json:"ir"`
+}
+
+func (tsl *Tsl) read(bus *smbus.Conn, addr uint8, ch int) error {
+	var err error
+	dev, err := tsl2591.Open(bus, tsl2591.Addr, tsl2591.IntegTime100ms, tsl2591.GainLow)
+	if err != nil {
+		return err
+	}
+
+	full, ir, err := dev.FullLuminosity()
+	if err != nil {
+		return err
+	}
+
+	tsl.Lux = dev.Lux(full, ir)
+	tsl.Full = full
+	tsl.IR = ir
+
+	return err
 }
 
 type Sht31 struct {
@@ -88,15 +149,30 @@ type Sht31 struct {
 	Hum  float64 `json:"hum"`
 }
 
+func (sht *Sht31) read(bus *smbus.Conn, addr uint8, ch int) error {
+	var err error
+	return err
+}
+
 type Si7021 struct {
 	Temp float64 `json:"temp"`
 	Hum  float64 `json:"hum"`
+}
+
+func (si *Si7021) read(bus *smbus.Conn, addr uint8, ch int) error {
+	var err error
+	return err
 }
 
 type Bme struct {
 	Temp float64 `json:"temp"`
 	Hum  float64 `json:"hum"`
 	Pres float64 `json:"pres"`
+}
+
+func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch int) error {
+	var err error
+	return err
 }
 
 func runClient(addr string) {
@@ -125,8 +201,8 @@ func genData() (Sensors, error) {
 		Timestamp: time.Now().UTC(),
 		Tsl: Tsl{
 			Lux:  rand.Float64(),
-			Full: rand.Float64(),
-			IR:   rand.Float64(),
+			Full: uint16(rand.Uint32()),
+			IR:   uint16(rand.Uint32()),
 		},
 		Sht31: Sht31{
 			Temp: rand.Float64(),
