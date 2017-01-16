@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-daq/smbus"
 	"github.com/go-daq/smbus/sensor/sht3x"
+	"github.com/go-daq/smbus/sensor/si7021"
 	"github.com/go-daq/smbus/sensor/tsl2591"
 )
 
@@ -193,6 +194,23 @@ func (si *Si7021) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 		return err
 	}
 
+	dev, err := si7021.Open(bus, 0x40)
+	if err != nil {
+		return err
+	}
+
+	h, err := dev.Humidity()
+	if err != nil {
+		return err
+	}
+
+	t, err := dev.Temperature()
+	if err != nil {
+		return err
+	}
+
+	si.Temp = t
+	si.Hum = h
 	return err
 }
 
