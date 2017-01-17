@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"flag"
 	"log"
-	"math/rand"
 	"net"
 	"time"
 
@@ -23,7 +22,8 @@ var (
 	busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
 	busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
 	freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
-	debug   = flag.Bool("dbg", false, "(debugging only)")
+
+	datac = make(chan sensors.Sensors)
 )
 
 func main() {
@@ -39,9 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if *debug {
-		go runClient(*addr)
-	}
+	go daq()
 
 	for {
 		conn, err := srv.Accept()
@@ -53,30 +51,43 @@ func main() {
 	}
 }
 
-func handle(conn net.Conn) {
-	defer conn.Close()
-
-	log.Printf("connection from: %v\n", conn.RemoteAddr())
-
+func daq() {
 	bus, err := smbus.Open(*busID, uint8(*busAddr))
 	if err != nil {
-		log.Printf("error opening smbus(id=%v addr=%v): %v\n", *busID, *busAddr, err)
+		log.Fatalf("error opening smbus(id=%v addr=%v): %v\n", *busID, *busAddr, err)
 		return
 	}
 	defer bus.Close()
 
 	tick := time.NewTicker(*freq)
 	defer tick.Stop()
+
 	for range tick.C {
 		data, err := fetchData(bus)
 		if err != nil {
-			log.Printf("error fetching data: %v\n", err)
-			return
+			log.Printf("error fetching data: $v\n", err)
+			continue
 		}
 
+		log.Printf("daq: %+v\n", data)
+		select {
+		case datac <- data:
+		default:
+			// nobody is listening
+			// drop it on the floor
+		}
+	}
+}
+
+func handle(conn net.Conn) {
+	defer conn.Close()
+
+	log.Printf("connection from: %v\n", conn.RemoteAddr())
+
+	for data := range datac {
 		var hdr [4]byte
 		var buf bytes.Buffer
-		err = json.NewEncoder(&buf).Encode(data)
+		err := json.NewEncoder(&buf).Encode(data)
 		if err != nil {
 			log.Printf("error sending json data: %v\n", err)
 			return
@@ -98,65 +109,10 @@ func handle(conn net.Conn) {
 }
 
 func fetchData(bus *smbus.Conn) (sensors.Sensors, error) {
-	if *debug {
-		return genData()
-	}
 	data, err := sensors.New(bus, uint8(*busAddr))
 	if err != nil {
 		return data, err
 	}
 
 	return data, nil
-}
-
-func runClient(addr string) {
-	tick := time.NewTicker(3 * time.Second)
-	defer tick.Stop()
-
-	for range tick.C {
-
-		conn, err := net.Dial("tcp", addr)
-		if err != nil {
-			log.Fatalf("client error: %v\n", err)
-		}
-		var data sensors.Sensors
-		err = json.NewDecoder(conn).Decode(&data)
-		conn.Close()
-		if err != nil {
-			log.Fatalf("client decoding error: %v\n", err)
-		}
-		log.Printf("--> recv: %v\n", data)
-	}
-}
-
-func genData() (sensors.Sensors, error) {
-	var err error
-	data := sensors.Sensors{
-		Timestamp: time.Now().UTC(),
-		Tsl: sensors.Tsl{
-			Lux:  rand.Float64(),
-			Full: uint16(rand.Uint32()),
-			IR:   uint16(rand.Uint32()),
-		},
-		Sht31: sensors.Sht31{
-			Temp: rand.Float64(),
-			Hum:  rand.Float64(),
-		},
-		Si7021: [2]sensors.Si7021{
-			{
-				Temp: rand.Float64(),
-				Hum:  rand.Float64(),
-			},
-			{
-				Temp: rand.Float64(),
-				Hum:  rand.Float64(),
-			},
-		},
-		Bme: sensors.Bme{
-			Temp: rand.Float64(),
-			Hum:  rand.Float64(),
-			Pres: rand.Float64(),
-		},
-	}
-	return data, err
 }
