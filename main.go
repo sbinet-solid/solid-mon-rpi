@@ -62,6 +62,7 @@ func daq() {
 	tick := time.NewTicker(*freq)
 	defer tick.Stop()
 
+	i := 0
 	for range tick.C {
 		data, err := fetchData(bus)
 		if err != nil {
@@ -69,7 +70,10 @@ func daq() {
 			continue
 		}
 
-		log.Printf("daq: %+v\n", data)
+		i++
+		if i%10 == 0 {
+			log.Printf("daq: %+v\n", data)
+		}
 		select {
 		case datac <- data:
 		default:
