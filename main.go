@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-daq/smbus"
+	"github.com/go-daq/smbus/sensor/bme280"
 	"github.com/go-daq/smbus/sensor/sht3x"
 	"github.com/go-daq/smbus/sensor/si7021"
 	"github.com/go-daq/smbus/sensor/tsl2591"
@@ -225,6 +226,20 @@ func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	if err != nil {
 		return err
 	}
+
+	dev, err := bme280.Open(bus, bme280.I2CAddr, bme280.OpSample8)
+	if err != nil {
+		return err
+	}
+
+	h, p, t, err := dev.Sample()
+	if err != nil {
+		return err
+	}
+
+	bme.Hum = h
+	bme.Pres = p
+	bme.Temp = t
 
 	return err
 }
