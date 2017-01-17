@@ -5,10 +5,17 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"flag"
+	"io"
 	"log"
 	"net"
+	"os"
 	"time"
+
+	"github.com/sbinet-solid/tcp-srv/sensors"
 )
 
 var (
@@ -28,21 +35,37 @@ func main() {
 }
 
 func runClient(addr string) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		log.Fatalf("client error: %v\n", err)
+	}
+	defer conn.Close()
+
 	tick := time.NewTicker(3 * time.Second)
 	defer tick.Stop()
 
+	r := conn
 	for range tick.C {
-		conn, err := net.Dial("tcp", addr)
+		var hdr uint32
+		err = binary.Read(r, binary.LittleEndian, &hdr)
 		if err != nil {
-			log.Fatalf("client error: %v\n", err)
+			log.Fatalf("error reading header: %v\n", err)
 		}
-		var buf [1024]byte
-		n, err := conn.Read(buf[:])
-		conn.Close()
 
+		buf := make([]byte, int(hdr))
+		_, err = io.ReadFull(r, buf)
 		if err != nil {
-			log.Fatalf("client error: %v\n", err)
+			log.Fatalf("error reading data: %v\n", err)
 		}
-		log.Printf("read %d bytes: %v\n", n, string(buf[:]))
+
+		var data sensors.Sensors
+		err = json.NewDecoder(bytes.NewReader(buf)).Decode(&data)
+		if err != nil {
+			log.Fatalf("json dec-error: %v\n", err)
+		}
+		err = json.NewEncoder(os.Stdout).Encode(data)
+		if err != nil {
+			log.Fatalf("json enc-error: %v\n", err)
+		}
 	}
 }

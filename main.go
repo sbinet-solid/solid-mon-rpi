@@ -5,6 +5,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"log"
@@ -13,16 +15,14 @@ import (
 	"time"
 
 	"github.com/go-daq/smbus"
-	"github.com/go-daq/smbus/sensor/bme280"
-	"github.com/go-daq/smbus/sensor/sht3x"
-	"github.com/go-daq/smbus/sensor/si7021"
-	"github.com/go-daq/smbus/sensor/tsl2591"
+	"github.com/sbinet-solid/tcp-srv/sensors"
 )
 
 var (
 	addr    = flag.String("addr", ":10000", "[ip]:port for TCP server")
 	busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
 	busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
+	freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
 	debug   = flag.Bool("dbg", false, "(debugging only)")
 )
 
@@ -58,190 +58,55 @@ func handle(conn net.Conn) {
 
 	log.Printf("connection from: %v\n", conn.RemoteAddr())
 
-	data, err := fetchData()
-	if err != nil {
-		log.Printf("error fetching data: %v\n", err)
-		return
-	}
-
-	err = json.NewEncoder(conn).Encode(data)
-	if err != nil {
-		log.Printf("error sending json data: %v\n", err)
-		return
-	}
-}
-
-func fetchData() (Sensors, error) {
-	if *debug {
-		return genData()
-	}
 	bus, err := smbus.Open(*busID, uint8(*busAddr))
 	if err != nil {
-		return Sensors{}, err
+		log.Printf("error opening smbus(id=%v addr=%v): %v\n", *busID, *busAddr, err)
+		return
 	}
 	defer bus.Close()
 
-	data := Sensors{Timestamp: time.Now().UTC()}
-	err = data.read(bus, uint8(*busAddr))
+	tick := time.NewTicker(*freq)
+	defer tick.Stop()
+	for range tick.C {
+		data, err := fetchData(bus)
+		if err != nil {
+			log.Printf("error fetching data: %v\n", err)
+			return
+		}
+
+		var hdr [4]byte
+		var buf bytes.Buffer
+		err = json.NewEncoder(&buf).Encode(data)
+		if err != nil {
+			log.Printf("error sending json data: %v\n", err)
+			return
+		}
+		binary.LittleEndian.PutUint32(hdr[:], uint32(buf.Len()))
+		_, err = conn.Write(hdr[:])
+		if err != nil {
+			log.Printf("error sending header: %v\n", err)
+			return
+		}
+
+		_, err = buf.WriteTo(conn)
+		if err != nil {
+			log.Printf("error sending data: %v\n", err)
+			return
+		}
+
+	}
+}
+
+func fetchData(bus *smbus.Conn) (sensors.Sensors, error) {
+	if *debug {
+		return genData()
+	}
+	data, err := sensors.New(bus, uint8(*busAddr))
 	if err != nil {
 		return data, err
 	}
 
 	return data, nil
-}
-
-type Sensors struct {
-	Timestamp time.Time `json:"timestamp"`
-	Tsl       Tsl       `json:"tsl"`
-	Sht31     Sht31     `json:"sht31"`
-	Si7021    [2]Si7021 `json:"si7021"`
-	Bme       Bme       `json:"bme280"`
-}
-
-func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
-	var err error
-	err = s.Tsl.read(bus, addr, 0x01)
-	if err != nil {
-		return err
-	}
-	err = s.Sht31.read(bus, addr, 0x02)
-	if err != nil {
-		return err
-	}
-	err = s.Si7021[0].read(bus, addr, 0x04)
-	if err != nil {
-		return err
-	}
-	err = s.Si7021[1].read(bus, addr, 0x08)
-	if err != nil {
-		return err
-	}
-	err = s.Bme.read(bus, addr, 0x10)
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-type Tsl struct {
-	Lux  float64 `json:"lux"`
-	Full uint16  `json:"full"`
-	IR   uint16  `json:"ir"`
-}
-
-func (tsl *Tsl) read(bus *smbus.Conn, addr uint8, ch uint8) error {
-	err := bus.WriteReg(addr, 0x04, ch)
-	if err != nil {
-		return err
-	}
-
-	dev, err := tsl2591.Open(bus, tsl2591.Addr, tsl2591.IntegTime100ms, tsl2591.GainLow)
-	if err != nil {
-		return err
-	}
-
-	full, ir, err := dev.FullLuminosity()
-	if err != nil {
-		return err
-	}
-
-	tsl.Lux = dev.Lux(full, ir)
-	tsl.Full = full
-	tsl.IR = ir
-
-	return err
-}
-
-type Sht31 struct {
-	Temp float64 `json:"temp"`
-	Hum  float64 `json:"hum"`
-}
-
-func (sht *Sht31) read(bus *smbus.Conn, addr uint8, ch uint8) error {
-	err := bus.WriteReg(addr, 0x04, ch)
-	if err != nil {
-		return err
-	}
-
-	dev, err := sht3x.Open(bus, sht3x.I2CAddr)
-	if err != nil {
-		return err
-	}
-
-	t, rh, err := dev.Sample()
-	if err != nil {
-		return err
-	}
-
-	sht.Temp = t
-	sht.Hum = rh
-
-	err = dev.ClearStatus()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-type Si7021 struct {
-	Temp float64 `json:"temp"`
-	Hum  float64 `json:"hum"`
-}
-
-func (si *Si7021) read(bus *smbus.Conn, addr uint8, ch uint8) error {
-	err := bus.WriteReg(addr, 0x04, ch)
-	if err != nil {
-		return err
-	}
-
-	dev, err := si7021.Open(bus, 0x40)
-	if err != nil {
-		return err
-	}
-
-	h, err := dev.Humidity()
-	if err != nil {
-		return err
-	}
-
-	t, err := dev.Temperature()
-	if err != nil {
-		return err
-	}
-
-	si.Temp = t
-	si.Hum = h
-	return err
-}
-
-type Bme struct {
-	Temp float64 `json:"temp"`
-	Hum  float64 `json:"hum"`
-	Pres float64 `json:"pres"`
-}
-
-func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch uint8) error {
-	err := bus.WriteReg(addr, 0x04, ch)
-	if err != nil {
-		return err
-	}
-
-	dev, err := bme280.Open(bus, bme280.I2CAddr, bme280.OpSample8)
-	if err != nil {
-		return err
-	}
-
-	h, p, t, err := dev.Sample()
-	if err != nil {
-		return err
-	}
-
-	bme.Hum = h
-	bme.Pres = p
-	bme.Temp = t
-
-	return err
 }
 
 func runClient(addr string) {
@@ -254,7 +119,7 @@ func runClient(addr string) {
 		if err != nil {
 			log.Fatalf("client error: %v\n", err)
 		}
-		var data Sensors
+		var data sensors.Sensors
 		err = json.NewDecoder(conn).Decode(&data)
 		conn.Close()
 		if err != nil {
@@ -264,20 +129,20 @@ func runClient(addr string) {
 	}
 }
 
-func genData() (Sensors, error) {
+func genData() (sensors.Sensors, error) {
 	var err error
-	data := Sensors{
+	data := sensors.Sensors{
 		Timestamp: time.Now().UTC(),
-		Tsl: Tsl{
+		Tsl: sensors.Tsl{
 			Lux:  rand.Float64(),
 			Full: uint16(rand.Uint32()),
 			IR:   uint16(rand.Uint32()),
 		},
-		Sht31: Sht31{
+		Sht31: sensors.Sht31{
 			Temp: rand.Float64(),
 			Hum:  rand.Float64(),
 		},
-		Si7021: [2]Si7021{
+		Si7021: [2]sensors.Si7021{
 			{
 				Temp: rand.Float64(),
 				Hum:  rand.Float64(),
@@ -287,7 +152,7 @@ func genData() (Sensors, error) {
 				Hum:  rand.Float64(),
 			},
 		},
-		Bme: Bme{
+		Bme: sensors.Bme{
 			Temp: rand.Float64(),
 			Hum:  rand.Float64(),
 			Pres: rand.Float64(),
