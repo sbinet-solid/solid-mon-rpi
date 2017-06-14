@@ -6,6 +6,8 @@
 package sensors
 
 import (
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/go-daq/smbus"
@@ -38,23 +40,23 @@ func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
 	var err error
 	err = s.Tsl.read(bus, addr, 0x01)
 	if err != nil {
-		return err
+		return fmt.Errorf("tsl error: %v", err)
 	}
 	err = s.Sht31.read(bus, addr, 0x02)
 	if err != nil {
-		return err
+		return fmt.Errorf("sht31 error: %v", err)
 	}
 	err = s.Si7021[0].read(bus, addr, 0x04)
 	if err != nil {
-		return err
+		return fmt.Errorf("si7021 error: %v", err)
 	}
 	err = s.Si7021[1].read(bus, addr, 0x08)
 	if err != nil {
-		return err
+		return fmt.Errorf("si7021 error: %v", err)
 	}
 	err = s.Bme.read(bus, addr, 0x10)
 	if err != nil {
-		return err
+		return fmt.Errorf("bme error: %v", err)
 	}
 	return err
 }
@@ -68,16 +70,19 @@ type Tsl struct {
 func (tsl *Tsl) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
+		log.Printf("tsl-write-reg error: %v", err)
 		return err
 	}
 
 	dev, err := tsl2591.Open(bus, tsl2591.Addr, tsl2591.IntegTime100ms, tsl2591.GainLow)
 	if err != nil {
+		log.Printf("tsl-open-bus error: %v", err)
 		return err
 	}
 
 	full, ir, err := dev.FullLuminosity()
 	if err != nil {
+		log.Printf("tsl-sample error: %v", err)
 		return err
 	}
 
@@ -96,16 +101,19 @@ type Sht31 struct {
 func (sht *Sht31) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
+		log.Printf("sht31-write-reg error: %v", err)
 		return err
 	}
 
 	dev, err := sht3x.Open(bus, sht3x.I2CAddr)
 	if err != nil {
+		log.Printf("sht31-open-bus error (addr=0x%x): %v", sht3x.I2CAddr, err)
 		return err
 	}
 
 	t, rh, err := dev.Sample()
 	if err != nil {
+		log.Printf("sht31-sample error: %v (addr=0x%x)", err, sht3x.I2CAddr)
 		return err
 	}
 
@@ -160,16 +168,19 @@ type Bme struct {
 func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
+		log.Printf("write-reg error: %v", err)
 		return err
 	}
 
 	dev, err := bme280.Open(bus, bme280.I2CAddr, bme280.OpSample8)
 	if err != nil {
+		log.Printf("open-bus error (i2c-addr=0x%x): %v", bme280.I2CAddr, err)
 		return err
 	}
 
 	h, p, t, err := dev.Sample()
 	if err != nil {
+		log.Printf("sample error: %v", err)
 		return err
 	}
 
