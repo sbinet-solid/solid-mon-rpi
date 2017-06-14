@@ -4,7 +4,7 @@ Requires=network-online.target
 
 [Service]
 WorkingDirectory=/home/pi
-ExecStart=/home/pi/bin/rpi3-tcp-srv
+ExecStart=/home/pi/bin/rpi3-tcp-srv -addr=:80
 Restart=always
 
 [Install]
