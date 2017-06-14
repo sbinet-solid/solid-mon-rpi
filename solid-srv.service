@@ -5,6 +5,7 @@ Requires=network-online.target
 [Service]
 WorkingDirectory=/home/pi
 ExecStart=/home/pi/bin/rpi3-tcp-srv
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
