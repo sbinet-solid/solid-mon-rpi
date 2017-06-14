@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	addr  = flag.String("addr", "clrmedaq02.in2p3.fr:10000", "[ip]:port for TCP server")
+	addr  = flag.String("addr", "clrmedaq01.in2p3.fr:8080", "[ip]:port for TCP server")
 	debug = flag.Bool("dbg", false, "(debugging only)")
 )
 

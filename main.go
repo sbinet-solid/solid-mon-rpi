@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	addr    = flag.String("addr", ":10000", "[ip]:port for TCP server")
+	addr    = flag.String("addr", ":8080", "[ip]:port for TCP server")
 	busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
 	busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
 	freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
