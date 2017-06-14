@@ -66,7 +66,7 @@ func daq() {
 	for range tick.C {
 		data, err := fetchData(bus)
 		if err != nil {
-			log.Printf("error fetching data: $v\n", err)
+			log.Printf("error fetching data: %v\n", err)
 			continue
 		}
 
