@@ -13,6 +13,7 @@ import (
 	"github.com/go-daq/smbus"
 	"github.com/go-daq/smbus/sensor/at30tse75x"
 	"github.com/go-daq/smbus/sensor/bme280"
+	"github.com/go-daq/smbus/sensor/hts221"
 	"github.com/go-daq/smbus/sensor/tsl2591"
 )
 
@@ -21,6 +22,7 @@ type Sensors struct {
 	Tsl       Tsl       `json:"tsl"`
 	Bme       Bme       `json:"bme280"`
 	At30tse   At30tse   `json:"at30tse"`
+	Hts221    Hts221    `json:"hts221"`
 }
 
 func New(bus *smbus.Conn, addr uint8) (Sensors, error) {
@@ -47,6 +49,10 @@ func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
 	err = s.At30tse.read(bus, addr, 0x08)
 	if err != nil {
 		return fmt.Errorf("at30tse error: %v", err)
+	}
+	err = s.Hts221.read(bus, addr, 0x02)
+	if err != nil {
+		return fmt.Errorf("hts221 error: %v", err)
 	}
 	return err
 }
@@ -140,5 +146,33 @@ func (at30 *At30tse) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 		return err
 	}
 	at30.Temp = t
+	return nil
+}
+
+type Hts221 struct {
+	Temp float64 `json:"temp"`
+	Humi float64 `json:"humidity"`
+}
+
+func (hts *Hts221) read(bus *smbus.Conn, addr uint8, ch uint8) error {
+	err := bus.WriteReg(addr, 0x04, ch)
+	if err != nil {
+		log.Printf("hts221-write-reg error: %v", err)
+		return err
+	}
+
+	dev, err := hts221.Open(bus, hts221.SlaveAddr)
+	if err != nil {
+		log.Printf("hts221-open-bus error: %v", err)
+		return err
+	}
+
+	h, t, err := dev.Sample()
+	if err != nil {
+		log.Printf("hts221-sample error: %v", err)
+		return err
+	}
+	hts.Temp = t
+	hts.Humi = h
 	return nil
 }
