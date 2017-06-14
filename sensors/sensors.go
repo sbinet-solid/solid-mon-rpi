@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-daq/smbus"
+	"github.com/go-daq/smbus/sensor/at30tse75x"
 	"github.com/go-daq/smbus/sensor/bme280"
 	"github.com/go-daq/smbus/sensor/tsl2591"
 )
@@ -19,6 +20,7 @@ type Sensors struct {
 	Timestamp time.Time `json:"timestamp"`
 	Tsl       Tsl       `json:"tsl"`
 	Bme       Bme       `json:"bme280"`
+	At30tse   At30tse   `json:"at30tse"`
 }
 
 func New(bus *smbus.Conn, addr uint8) (Sensors, error) {
@@ -41,6 +43,10 @@ func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
 	err = s.Bme.read(bus, addr, 0x80)
 	if err != nil {
 		return fmt.Errorf("bme error: %v", err)
+	}
+	err = s.At30tse.read(bus, addr, 0x08)
+	if err != nil {
+		return fmt.Errorf("at30tse error: %v", err)
 	}
 	return err
 }
@@ -108,4 +114,31 @@ func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	bme.Temp = t
 
 	return err
+}
+
+type At30tse struct {
+	Temp float64 `json:"temp"`
+}
+
+func (at30 *At30tse) read(bus *smbus.Conn, addr uint8, ch uint8) error {
+	err := bus.WriteReg(addr, 0x04, ch)
+	if err != nil {
+		log.Printf("at30tse-write-reg error: %v", err)
+		return err
+	}
+
+	const eeprom = 4
+	dev, err := at30tse75x.Open(bus, 0, eeprom)
+	if err != nil {
+		log.Printf("at30tse-open-bus error: %v", err)
+		return err
+	}
+
+	t, err := dev.T()
+	if err != nil {
+		log.Printf("at30tse-sample error: %v", err)
+		return err
+	}
+	at30.Temp = t
+	return nil
 }
