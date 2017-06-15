@@ -6,65 +6,183 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"flag"
+	"fmt"
+	"html/template"
 	"log"
 	"net"
+	"net/http"
+	"os"
 	"time"
+
+	"golang.org/x/net/websocket"
 
 	"github.com/go-daq/smbus"
 	"github.com/sbinet-solid/tcp-srv/sensors"
 )
 
-var (
-	addr    = flag.String("addr", ":8080", "[ip]:port for TCP server")
-	busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
-	busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
-	freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
-
-	datac = make(chan sensors.Sensors)
-)
-
 func main() {
+	var (
+		addr    = flag.String("addr", ":8080", "[ip]:port for TCP server")
+		busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
+		busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
+		freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
+	)
+
 	flag.Parse()
 
 	log.SetFlags(0)
 	log.SetPrefix("tcp-srv ")
 
-	log.Printf("starting up server on: %v\n", *addr)
+	log.Printf("starting up web-server on: %v\n", *addr)
 
-	srv, err := net.Listen("tcp", *addr)
+	srv, err := newServer(*addr, *freq, *busID, *busAddr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("error starting server: %v", err)
 	}
 
-	go daq()
+	http.Handle("/", srv)
+	http.Handle("/data", websocket.Handler(srv.dataHandler))
 
-	for {
-		conn, err := srv.Accept()
-		if err != nil {
-			log.Printf("error accepting connection: %v\n", err)
-			continue
-		}
-		go handle(conn)
+	err = http.ListenAndServe(srv.addr, nil)
+	if err != nil {
+		srv.quit <- 1
+		log.Fatalf("error running server: %v", err)
 	}
 }
 
-func daq() {
-	bus, err := smbus.Open(*busID, uint8(*busAddr))
-	if err != nil {
-		log.Fatalf("error opening smbus(id=%v addr=%v): %v\n", *busID, *busAddr, err)
-		return
+type server struct {
+	addr string
+	freq time.Duration
+	quit chan int
+
+	bus struct {
+		id   int
+		addr uint8
+		data chan sensors.Sensors
 	}
+
+	tmpl    *template.Template
+	dataReg registry // clients interested in sensors data
+	plots   chan Plots
+}
+
+func newServer(addr string, freq time.Duration, busID, busAddr int) (*server, error) {
+	if addr == "" {
+		addr = getHostIP() + ":80"
+	}
+
+	srv := &server{
+		addr:    addr,
+		freq:    freq,
+		quit:    make(chan int),
+		dataReg: newRegistry(),
+		tmpl:    template.Must(template.New("fcs").Parse(indexTmpl)),
+		plots:   make(chan Plots),
+	}
+	srv.bus.id = busID
+	srv.bus.addr = uint8(busAddr)
+	srv.bus.data = make(chan sensors.Sensors)
+
+	conn, err := smbus.Open(srv.bus.id, srv.bus.addr)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"error opening SMBus connection (id=%d addr=0x%x): %v",
+			srv.bus.id,
+			srv.bus.addr,
+			err,
+		)
+	}
+	go srv.run(conn)
+
+	return srv, nil
+}
+
+func (srv *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	srv.wrap(srv.rootHandler)(w, r)
+}
+
+func (srv *server) rootHandler(w http.ResponseWriter, r *http.Request) error {
+	return srv.tmpl.Execute(w, srv)
+}
+
+func (srv *server) wrap(f func(w http.ResponseWriter, r *http.Request) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := f(w, r)
+		if err != nil {
+			log.Printf("error: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func (srv *server) dataHandler(ws *websocket.Conn) {
+	log.Printf("new client...")
+	c := &client{
+		srv:   srv,
+		reg:   &srv.dataReg,
+		datac: make(chan []byte, 256),
+		ws:    ws,
+	}
+	c.reg.register <- c
+	defer c.Release()
+
+	c.run()
+}
+
+func (srv *server) run(bus *smbus.Conn) {
+	go srv.daq(bus)
+	go srv.mon()
+	for {
+		select {
+		case c := <-srv.dataReg.register:
+			log.Printf("client registering [%v]...", c.ws.LocalAddr())
+			srv.dataReg.clients[c] = true
+
+		case c := <-srv.dataReg.unregister:
+			if _, ok := srv.dataReg.clients[c]; ok {
+				delete(srv.dataReg.clients, c)
+				close(c.datac)
+				log.Printf(
+					"client disconnected [%v]\n",
+					c.ws.LocalAddr(),
+				)
+			}
+
+		case plots := <-srv.plots:
+			if len(srv.dataReg.clients) == 0 {
+				// no client connected
+				continue
+			}
+			dataBuf := new(bytes.Buffer)
+			err := json.NewEncoder(dataBuf).Encode(&plots)
+			if err != nil {
+				log.Printf("error marshalling data: %v\n", err)
+				continue
+			}
+			for c := range srv.dataReg.clients {
+				select {
+				case c.datac <- dataBuf.Bytes():
+				default:
+					close(c.datac)
+					delete(srv.dataReg.clients, c)
+				}
+			}
+		}
+	}
+}
+
+func (srv *server) daq(bus *smbus.Conn) {
 	defer bus.Close()
 
-	tick := time.NewTicker(*freq)
+	tick := time.NewTicker(srv.freq)
 	defer tick.Stop()
 
 	i := 0
 	for range tick.C {
-		data, err := fetchData(bus)
+		data, err := srv.fetchData(bus)
 		if err != nil {
 			log.Printf("error fetching data: %v\n", err)
 			continue
@@ -75,7 +193,7 @@ func daq() {
 			log.Printf("daq: %+v\n", data)
 		}
 		select {
-		case datac <- data:
+		case srv.bus.data <- data:
 		default:
 			// nobody is listening
 			// drop it on the floor
@@ -83,40 +201,56 @@ func daq() {
 	}
 }
 
-func handle(conn net.Conn) {
-	defer conn.Close()
-
-	log.Printf("connection from: %v\n", conn.RemoteAddr())
-
-	for data := range datac {
-		var hdr [4]byte
-		var buf bytes.Buffer
-		err := json.NewEncoder(&buf).Encode(data)
-		if err != nil {
-			log.Printf("error sending json data: %v\n", err)
-			return
+func (srv *server) mon() {
+	table := make([]sensors.Sensors, 0, 1024)
+	for data := range srv.bus.data {
+		if len(table) == cap(table) {
+			i := len(table)
+			copy(table[:i/2], table[i/2:])
+			table = table[:i/2]
 		}
-		binary.LittleEndian.PutUint32(hdr[:], uint32(buf.Len()))
-		_, err = conn.Write(hdr[:])
+		table = append(table, data)
+		ps, err := newPlots(table)
 		if err != nil {
-			log.Printf("error sending header: %v\n", err)
-			return
+			log.Printf("error creating monitoring plots: %v", err)
+			continue
 		}
-
-		_, err = buf.WriteTo(conn)
-		if err != nil {
-			log.Printf("error sending data: %v\n", err)
-			return
+		select {
+		case srv.plots <- ps:
+		default:
+			// nobody is listening
 		}
-
 	}
 }
 
-func fetchData(bus *smbus.Conn) (sensors.Sensors, error) {
-	data, err := sensors.New(bus, uint8(*busAddr))
+func (srv *server) fetchData(bus *smbus.Conn) (sensors.Sensors, error) {
+	data, err := sensors.New(bus, srv.bus.addr)
 	if err != nil {
 		return data, err
 	}
 
 	return data, nil
+}
+
+func getHostIP() string {
+	host, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("could not retrieve hostname: %v\n", err)
+	}
+
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		log.Fatalf("could not lookup hostname IP: %v\n", err)
+	}
+
+	for _, addr := range addrs {
+		ipv4 := addr.To4()
+		if ipv4 == nil {
+			continue
+		}
+		return ipv4.String()
+	}
+
+	log.Fatalf("could not infer host IP")
+	return ""
 }
