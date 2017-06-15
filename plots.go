@@ -1,4 +1,4 @@
-// Copyright 2017 The tcp-srv Authors.  All rights reserved.
+// Copyright 2017 The solid-mon-rpi Authors.  All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -19,7 +19,7 @@ import (
 	"github.com/gonum/plot/vg"
 	"github.com/gonum/plot/vg/draw"
 	"github.com/gonum/plot/vg/vgsvg"
-	"github.com/sbinet-solid/tcp-srv/sensors"
+	"github.com/sbinet-solid/solid-mon-rpi/sensors"
 )
 
 var (

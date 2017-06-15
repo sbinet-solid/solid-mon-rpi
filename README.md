@@ -1,11 +1,11 @@
-# tcp-srv
+# solid-mon-rpi
 
-`tcp-srv` is a simple TCP server publishing data from `I2C` and `SMBus` sensors.
+`solid-mon-rpi` is an HTTP server publishing data from `I2C` and `SMBus` sensors.
 
 ## Example
 
 ```sh
-$> tcp-srv
+$> solid-mon-rpi -addr=:80
 tcp-srv starting up server on: :10000
 tcp-srv daq: {Timestamp:2017-01-12 20:05:41.512823703 +0000 UTC Tsl:{Lux:7.017600000000001 Full:5 IR:2} Sht31:{Temp:19.309529259174482 Hum:23.302052338445105} Si7021:[{Temp:19.087900390625002 Hum:23.521942138671875} {Temp:19.034274902343746 Hum:22.682708740234375}] Bme:{Temp:20.034765625 Hum:34.294829763189966 Pres:976.813259481733}}
 tcp-srv daq: {Timestamp:2017-01-12 20:05:44.111935763 +0000 UTC Tsl:{Lux:7.017600000000001 Full:5 IR:2} Sht31:{Temp:19.280155642023345 Hum:23.300526436255435} Si7021:[{Temp:19.06645019531249 Hum:23.529571533203125} {Temp:19.034274902343746 Hum:22.659820556640625}] Bme:{Temp:20.044921875 Hum:34.23593420511301 Pres:976.8052497789915}}
