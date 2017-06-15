@@ -18,11 +18,11 @@ import (
 )
 
 type Sensors struct {
-	Timestamp time.Time `json:"timestamp"`
-	Tsl       Tsl       `json:"tsl"`
-	Bme       Bme       `json:"bme280"`
-	At30tse   At30tse   `json:"at30tse"`
-	Hts221    Hts221    `json:"hts221"`
+	Timestamp  time.Time  `json:"timestamp"`
+	Tsl2591    Tsl2591    `json:"tsl2591"`
+	Bme280     Bme280     `json:"bme280"`
+	At30tse75x At30tse75x `json:"at30tse75x"`
+	Hts221     Hts221     `json:"hts221"`
 }
 
 func New(bus *smbus.Conn, addr uint8) (Sensors, error) {
@@ -38,15 +38,15 @@ func New(bus *smbus.Conn, addr uint8) (Sensors, error) {
 
 func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
 	var err error
-	err = s.Tsl.read(bus, addr, 0x80)
+	err = s.Tsl2591.read(bus, addr, 0x80)
 	if err != nil {
 		return fmt.Errorf("tsl error: %v", err)
 	}
-	err = s.Bme.read(bus, addr, 0x80)
+	err = s.Bme280.read(bus, addr, 0x80)
 	if err != nil {
 		return fmt.Errorf("bme error: %v", err)
 	}
-	err = s.At30tse.read(bus, addr, 0x08)
+	err = s.At30tse75x.read(bus, addr, 0x08)
 	if err != nil {
 		return fmt.Errorf("at30tse error: %v", err)
 	}
@@ -57,13 +57,13 @@ func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
 	return err
 }
 
-type Tsl struct {
+type Tsl2591 struct {
 	Lux  float64 `json:"lux"`
 	Full uint16  `json:"full"`
 	IR   uint16  `json:"ir"`
 }
 
-func (tsl *Tsl) read(bus *smbus.Conn, addr uint8, ch uint8) error {
+func (tsl *Tsl2591) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
 		log.Printf("tsl-write-reg error: %v", err)
@@ -89,13 +89,13 @@ func (tsl *Tsl) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	return err
 }
 
-type Bme struct {
+type Bme280 struct {
 	Temp float64 `json:"temp"`
-	Hum  float64 `json:"hum"`
+	Hum  float64 `json:"humi"`
 	Pres float64 `json:"pres"`
 }
 
-func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch uint8) error {
+func (bme *Bme280) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
 		log.Printf("write-reg error: %v", err)
@@ -122,11 +122,11 @@ func (bme *Bme) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	return err
 }
 
-type At30tse struct {
+type At30tse75x struct {
 	Temp float64 `json:"temp"`
 }
 
-func (at30 *At30tse) read(bus *smbus.Conn, addr uint8, ch uint8) error {
+func (at30 *At30tse75x) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
 		log.Printf("at30tse-write-reg error: %v", err)
@@ -151,7 +151,7 @@ func (at30 *At30tse) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 
 type Hts221 struct {
 	Temp float64 `json:"temp"`
-	Humi float64 `json:"humidity"`
+	Humi float64 `json:"humi"`
 }
 
 func (hts *Hts221) read(bus *smbus.Conn, addr uint8, ch uint8) error {
