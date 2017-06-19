@@ -10,6 +10,8 @@ import (
 	"image/color"
 	"log"
 	"math"
+	"sort"
+	"strings"
 	"time"
 
 	"go-hep.org/x/hep/hplot"
@@ -22,14 +24,7 @@ import (
 	"github.com/sbinet-solid/solid-mon-rpi/sensors"
 )
 
-var (
-	plotColors = map[string]color.Color{
-		"BME280":  color.NRGBA{255, 0, 0, 128},
-		"AT30TSE": color.NRGBA{0, 255, 0, 128},
-		"HTS221":  color.NRGBA{0, 0, 255, 128},
-		"TSL2591": color.Black,
-	}
-)
+var plotColors = make(map[string]color.Color)
 
 type Plots struct {
 	update time.Time
@@ -75,22 +70,21 @@ func newPlots(data []sensors.Sensors) (Plots, error) {
 	labels := make(map[string]int)
 
 	for _, tbl := range []struct {
-		name  string
-		pl    *hplot.Plot
-		setup func(p, leg *hplot.Plot, names map[string]int, table []sensors.Sensors) error
+		pl  *hplot.Plot
+		typ sensors.Type
 	}{
-		{"Humidity", ps.tile.Plot(0, 0), setupPlotHumidity},
-		{"Pressure", ps.tile.Plot(0, 1), setupPlotPressure},
-		{"Temperature", ps.tile.Plot(1, 0), setupPlotTemp},
-		{"Lux", ps.tile.Plot(1, 1), setupPlotLux},
+		{ps.tile.Plot(0, 0), sensors.Humidity},
+		{ps.tile.Plot(0, 1), sensors.Pressure},
+		{ps.tile.Plot(1, 0), sensors.Temperature},
+		{ps.tile.Plot(1, 1), sensors.Luminosity},
 	} {
-		tbl.pl.Title.Text = tbl.name
+		tbl.pl.Title.Text = strings.Title(tbl.typ.String())
 		tbl.pl.X.Tick.Marker = plot.TimeTicks{Format: "2006-01-02\n15:04:05"}
 		tbl.pl.X.Tick.Label.Rotation = math.Pi / 4
 		tbl.pl.X.Tick.Label.YAlign = draw.YTop
 		tbl.pl.X.Tick.Label.XAlign = draw.XRight
 
-		err = tbl.setup(tbl.pl, leg, labels, data)
+		err = setupPlot(tbl.pl, leg, &labels, data, tbl.typ)
 		if err != nil {
 			return ps, err
 		}
@@ -119,167 +113,37 @@ func (ps *Plots) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func setupPlotHumidity(pl, leg *hplot.Plot, names map[string]int, table []sensors.Sensors) error {
-	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.Bme280.Hum
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "BME280"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
-		}
-	}
-
-	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.Hts221.Humi
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "HTS221"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
-		}
-	}
-
-	pl.Add(plotter.NewGrid())
-
-	return nil
-}
-
-func setupPlotPressure(pl, leg *hplot.Plot, names map[string]int, table []sensors.Sensors) error {
+func setupPlot(pl, leg *hplot.Plot, names *map[string]int, table sensors.Table, typ sensors.Type) error {
 	min := +math.MaxFloat64
 	max := -math.MaxFloat64
 	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.Bme280.Pres
-			p := v.Bme280.Pres
-			max = math.Max(max, p)
-			min = math.Min(min, p)
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "BME280"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
-		}
-	}
-
-	// FIXME(sbinet): hack to work around https://github.com/gonum/plot/issues/366
-	pl.Y.Min = min - 0.5
-	pl.Y.Max = max + 0.5
-
-	pl.Add(plotter.NewGrid())
-
-	return nil
-}
-
-func setupPlotTemp(pl, leg *hplot.Plot, names map[string]int, table []sensors.Sensors) error {
-	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.Bme280.Temp
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "BME280"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
+		labels := table.Labels(typ)
+		sort.Strings(labels)
+		for k := range labels {
+			label := labels[k]
+			ymin, ymax, data := table.Data(typ, label)
+			min = math.Min(min, ymin)
+			max = math.Max(max, ymax)
+			lines, err := plotter.NewLine(data)
+			if err != nil {
+				return err
+			}
+			lines.Color = plotColors[label]
+			pl.Add(lines)
+			if _, dup := (*names)[label]; !dup {
+				leg.Legend.Add(label, lines)
+				(*names)[label] = 1
+			}
 		}
 	}
 
-	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.Hts221.Temp
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "HTS221"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
-		}
-	}
-
-	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.At30tse75x.Temp
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "AT30TSE"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
-		}
+	if typ == sensors.Pressure {
+		// FIXME(sbinet): hack to work around https://github.com/gonum/plot/issues/366
+		pl.Y.Min = min - 0.5
+		pl.Y.Max = max + 0.5
 	}
 
 	pl.Add(plotter.NewGrid())
 
-	return nil
-}
-
-func setupPlotLux(pl, leg *hplot.Plot, names map[string]int, table []sensors.Sensors) error {
-	{
-		data := make(plotter.XYs, len(table))
-		for i, v := range table {
-			data[i].X = float64(v.Timestamp.UTC().Unix())
-			data[i].Y = v.Tsl2591.Lux
-		}
-		lines, err := plotter.NewLine(data)
-		if err != nil {
-			return err
-		}
-		name := "TSL2591"
-		lines.Color = plotColors[name]
-		pl.Add(lines)
-		if _, dup := names[name]; !dup {
-			leg.Legend.Add(name, lines)
-			names[name] = 1
-		}
-	}
-
-	pl.Add(plotter.NewGrid())
 	return nil
 }

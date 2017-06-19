@@ -6,8 +6,11 @@
 package sensors
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/go-daq/smbus"
@@ -15,46 +18,155 @@ import (
 	"github.com/go-daq/smbus/sensor/bme280"
 	"github.com/go-daq/smbus/sensor/hts221"
 	"github.com/go-daq/smbus/sensor/tsl2591"
+	"github.com/gonum/plot/plotter"
 )
 
-type Sensors struct {
-	Timestamp  time.Time  `json:"timestamp"`
-	Tsl2591    Tsl2591    `json:"tsl2591"`
-	Bme280     Bme280     `json:"bme280"`
-	At30tse75x At30tse75x `json:"at30tse75x"`
-	Hts221     Hts221     `json:"hts221"`
+type Descr struct {
+	Name   string `xml:"name,attr"`
+	ChanID int    `xml:"channel,attr"`
+	Type   string `xml:"type,attr"`
 }
 
-func New(bus *smbus.Conn, addr uint8) (Sensors, error) {
+type Sensors struct {
+	Timestamp time.Time         `json:"timestamp"`
+	Sensors   []Data            `json:"sensors"`
+	Labels    map[string][]Type `json:"labels"`
+}
+
+type Data struct {
+	Name  string  `json:"name"`
+	Type  Type    `json:"type"`
+	Value float64 `json:"value"`
+}
+
+// Type describes the type of data sensor (H,P,T,L)
+type Type uint8
+
+const (
+	InvalidType Type = iota
+	Humidity
+	Pressure
+	Temperature
+	Luminosity
+)
+
+func (t Type) String() string {
+	switch t {
+	case InvalidType:
+		return "invalid"
+	case Humidity:
+		return "humidity"
+	case Pressure:
+		return "pressure"
+	case Temperature:
+		return "temperature"
+	case Luminosity:
+		return "luminosity"
+	}
+	panic(fmt.Errorf("unknown sensor type %d", t))
+}
+
+func (t Type) MarshalJSON() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(t.String())
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// mux maps an I2C channel id to an action register
+var mux = [...]uint8{
+	0: 0x01,
+	1: 0x02,
+	2: 0x04,
+	3: 0x08,
+	4: 0x10,
+	5: 0x20,
+	6: 0x40,
+	7: 0x80,
+}
+
+func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 	data := Sensors{
 		Timestamp: time.Now().UTC(),
+		Labels:    make(map[string][]Type, len(descr)),
 	}
-	err := data.read(bus, addr)
-	if err != nil {
-		return Sensors{}, err
+	for _, d := range descr {
+		switch d.Type {
+		case "AT30TSE":
+			device := At30tse75x{}
+			err := device.read(bus, addr, mux[d.ChanID])
+			if err != nil {
+				return data, err
+			}
+			data.Sensors = append(data.Sensors, Data{
+				Name:  d.Name,
+				Type:  Temperature,
+				Value: device.Temp,
+			})
+			data.Labels[d.Name] = []Type{Temperature}
+
+		case "HTS221":
+			device := Hts221{}
+			err := device.read(bus, addr, mux[d.ChanID])
+			if err != nil {
+				return data, err
+			}
+			data.Sensors = append(data.Sensors, Data{
+				Name:  d.Name,
+				Type:  Humidity,
+				Value: device.Humi,
+			})
+			data.Sensors = append(data.Sensors, Data{
+				Name:  d.Name,
+				Type:  Temperature,
+				Value: device.Temp,
+			})
+			data.Labels[d.Name] = []Type{Humidity, Temperature}
+
+		case "Onboard":
+			{
+				device := Bme280{}
+				err := device.read(bus, addr, mux[d.ChanID])
+				if err != nil {
+					return data, err
+				}
+				data.Sensors = append(data.Sensors, Data{
+					Name:  d.Name,
+					Type:  Humidity,
+					Value: device.Hum,
+				})
+				data.Sensors = append(data.Sensors, Data{
+					Name:  d.Name,
+					Type:  Pressure,
+					Value: device.Pres,
+				})
+				data.Sensors = append(data.Sensors, Data{
+					Name:  d.Name,
+					Type:  Temperature,
+					Value: device.Temp,
+				})
+				data.Labels[d.Name] = append(data.Labels[d.Name], []Type{
+					Humidity, Pressure, Temperature,
+				}...)
+			}
+			{
+				device := Tsl2591{}
+				err := device.read(bus, addr, mux[d.ChanID])
+				if err != nil {
+					return data, err
+				}
+				data.Sensors = append(data.Sensors, Data{
+					Name:  d.Name,
+					Type:  Luminosity,
+					Value: device.Lux,
+				})
+				data.Labels[d.Name] = append(data.Labels[d.Name], Luminosity)
+			}
+		}
 	}
 	return data, nil
-}
-
-func (s *Sensors) read(bus *smbus.Conn, addr uint8) error {
-	var err error
-	err = s.Tsl2591.read(bus, addr, 0x80)
-	if err != nil {
-		return fmt.Errorf("tsl error: %v", err)
-	}
-	err = s.Bme280.read(bus, addr, 0x80)
-	if err != nil {
-		return fmt.Errorf("bme error: %v", err)
-	}
-	err = s.At30tse75x.read(bus, addr, 0x08)
-	if err != nil {
-		return fmt.Errorf("at30tse error: %v", err)
-	}
-	err = s.Hts221.read(bus, addr, 0x02)
-	if err != nil {
-		return fmt.Errorf("hts221 error: %v", err)
-	}
-	return err
 }
 
 type Tsl2591 struct {
@@ -175,4 +287,36 @@ func (hts *Hts221) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	hts.Temp = t
 	hts.Humi = h
 	return nil
+}
+
+type Table []Sensors
+
+func (tbl Table) Data(typ Type, label string) (float64, float64, plotter.XYs) {
+	min := +math.MaxFloat64
+	max := -math.MaxFloat64
+	data := make(plotter.XYs, len(tbl))
+	for i, v := range tbl {
+		for _, sensor := range v.Sensors {
+			if sensor.Type != typ || sensor.Name != label {
+				continue
+			}
+			data[i].X = float64(v.Timestamp.UTC().Unix())
+			data[i].Y = sensor.Value
+			min = math.Min(min, sensor.Value)
+			max = math.Max(max, sensor.Value)
+		}
+	}
+	return min, max, data
+}
+
+func (tbl Table) Labels(typ Type) []string {
+	var labels []string
+	for k, v := range tbl[0].Labels {
+		for _, t := range v {
+			if typ == t {
+				labels = append(labels, k)
+			}
+		}
+	}
+	return labels
 }

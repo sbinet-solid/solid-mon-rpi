@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"html/template"
@@ -14,11 +15,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 
 	"golang.org/x/net/websocket"
 
 	"github.com/go-daq/smbus"
+	"github.com/gonum/plot/palette/brewer"
 	"github.com/sbinet-solid/solid-mon-rpi/sensors"
 )
 
@@ -28,6 +31,7 @@ func main() {
 		busID   = flag.Int("bus-id", 0x1, "SMBus ID number (/dev/i2c-[ID]")
 		busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
 		freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
+		cfgFlag = flag.String("cfg", "", "path to an XML configuration file for sensors")
 	)
 
 	flag.Parse()
@@ -36,10 +40,43 @@ func main() {
 	log.SetPrefix("solid-mon-rpi ")
 
 	log.Printf("starting up web-server on: %v\n", *addr)
-
 	srv, err := newServer(*addr, *freq, *busID, *busAddr)
 	if err != nil {
 		log.Fatalf("error starting server: %v", err)
+	}
+
+	if *cfgFlag != "" {
+		var cfg Config
+		f, err := os.Open(*cfgFlag)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		err = xml.NewDecoder(f).Decode(&cfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("cfg: %+v\n", cfg.Sensors)
+		srv.bus.descr = cfg.Sensors
+
+		set := make(map[string]int)
+		for _, descr := range srv.bus.descr {
+			set[descr.Name] = 1
+		}
+		var labels []string
+		for k := range set {
+			labels = append(labels, k)
+		}
+		sort.Strings(labels)
+		p, err := brewer.GetPalette(brewer.TypeAny, "Dark2", len(labels))
+		if err != nil {
+			log.Fatal(err)
+		}
+		colors := p.Colors()
+		for i, label := range labels {
+			col := colors[i%len(colors)]
+			plotColors[label] = col
+		}
 	}
 
 	http.Handle("/", srv)
@@ -53,15 +90,22 @@ func main() {
 	}
 }
 
+type Config struct {
+	XMLName xml.Name        `xml:"data"`
+	Sensors []sensors.Descr `xml:"sensor"`
+	Freq    time.Duration
+}
+
 type server struct {
 	addr string
 	freq time.Duration
 	quit chan int
 
 	bus struct {
-		id   int
-		addr uint8
-		data chan sensors.Sensors
+		id    int
+		addr  uint8
+		data  chan sensors.Sensors
+		descr []sensors.Descr
 	}
 
 	tmpl    *template.Template
@@ -247,7 +291,7 @@ func (srv *server) mon() {
 }
 
 func (srv *server) fetchData(bus *smbus.Conn) (sensors.Sensors, error) {
-	data, err := sensors.New(bus, srv.bus.addr)
+	data, err := sensors.New(bus, srv.bus.addr, srv.bus.descr)
 	if err != nil {
 		return data, err
 	}
