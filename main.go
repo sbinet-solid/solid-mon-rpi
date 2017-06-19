@@ -44,6 +44,7 @@ func main() {
 
 	http.Handle("/", srv)
 	http.Handle("/data", websocket.Handler(srv.dataHandler))
+	http.HandleFunc("/echo", srv.wrap(srv.echoHandler))
 
 	err = http.ListenAndServe(srv.addr, nil)
 	if err != nil {
@@ -66,6 +67,7 @@ type server struct {
 	tmpl    *template.Template
 	dataReg registry // clients interested in sensors data
 	plots   chan Plots
+	echo    chan sensors.Sensors
 }
 
 func newServer(addr string, freq time.Duration, busID, busAddr int) (*server, error) {
@@ -80,6 +82,7 @@ func newServer(addr string, freq time.Duration, busID, busAddr int) (*server, er
 		dataReg: newRegistry(),
 		tmpl:    template.Must(template.New("fcs").Parse(indexTmpl)),
 		plots:   make(chan Plots),
+		echo:    make(chan sensors.Sensors),
 	}
 	srv.bus.id = busID
 	srv.bus.addr = uint8(busAddr)
@@ -116,6 +119,25 @@ func (srv *server) wrap(f func(w http.ResponseWriter, r *http.Request) error) ht
 			return
 		}
 	}
+}
+
+func (srv *server) echoHandler(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != http.MethodGet {
+		return fmt.Errorf("invalid HTTP request (got=%v, want=%v)", r.Method, http.MethodGet)
+	}
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+	select {
+	case <-timeout.C:
+		return fmt.Errorf("timeout retrieving data from board")
+	case data := <-srv.echo:
+		w.Header().Set("Content-Type", "application/json")
+		err := json.NewEncoder(w).Encode(data)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (srv *server) dataHandler(ws *websocket.Conn) {
@@ -217,6 +239,7 @@ func (srv *server) mon() {
 		}
 		select {
 		case srv.plots <- ps:
+		case srv.echo <- data:
 		default:
 			// nobody is listening
 		}
