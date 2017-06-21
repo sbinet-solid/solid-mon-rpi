@@ -207,6 +207,10 @@ func (srv *server) run(bus *smbus.Conn) {
 	go srv.mon()
 	for {
 		select {
+		case <-srv.quit:
+			log.Printf("shutting down server")
+			close(srv.quit)
+			return
 		case c := <-srv.dataReg.register:
 			log.Printf("client registering [%v]...", c.ws.LocalAddr())
 			srv.dataReg.clients[c] = true
