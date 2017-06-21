@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -e
+go generate
+go get -v
+
+BIN=solid-mon-rpi
+echo "## create an ARM-based executable for rPi3"
+GOARCH=arm GOARM=7 go build -i -v -o $BIN
+chmod uga+x ./$BIN
+
+SERVER=${1:pi@clrmedaq01.in2p3.fr}
+
+./deploy ${SERVER} ${BIN}
+/bin/rm ./$BIN

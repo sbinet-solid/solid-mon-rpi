@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+
+SERVER=${1:pi@clrmedaq01.in2p3.fr}
+BIN=${2:solid-mon-rpi}
+
+ssh $SERVER -- sudo systemctl stop solid-srv.service
+scp ./{config.xml,solid-srv.service} $SERVER:.
+ssh $SERVER -- sudo /bin/mv ./solid-srv.service /etc/systemd/system/solid-srv.service
+ssh $SERVER -- mkdir -p /home/pi/bin
+scp $BIN $SERVER:~/bin/solid-mon-rpi
+ssh $SERVER -- sudo systemctl daemon-reload
+ssh $SERVER -- sudo systemctl enable solid-srv.service
+ssh $SERVER -- sudo systemctl start  solid-srv.service
+ssh $SERVER -- ps -edf | grep solid
