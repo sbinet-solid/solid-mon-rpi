@@ -7,11 +7,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"image/color"
 	"log"
 	"math"
 	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"go-hep.org/x/hep/hplot"
@@ -28,6 +30,42 @@ var plotColors = make(map[string]color.Color)
 
 type Plots struct {
 	update time.Time
+	plots  ControlPlots
+	trends ControlPlots
+	data   sensors.Sensors
+}
+
+func (ps *Plots) MarshalJSON() ([]byte, error) {
+	var raw struct {
+		Plot   string `json:"plot"`
+		Trends string `json:"trends"`
+		Update string `json:"update"`
+		Data   string `json:"data"`
+	}
+
+	raw.Plot = renderPlot(ps.plots.tile)
+	raw.Trends = renderPlot(ps.trends.tile)
+	raw.Update = ps.update.Format("2006-01-02 15:04:05 (MST)")
+
+	str := new(bytes.Buffer)
+	w := tabwriter.NewWriter(str, 8, 4, 1, ' ', 0)
+	for _, d := range ps.data.Sensors {
+		fmt.Fprintf(w, "%s\t%v\t(%v)\n", d.Name, d.Value, d.Type)
+	}
+	w.Flush()
+	raw.Data = string(str.Bytes())
+
+	buf := new(bytes.Buffer)
+	err := json.NewEncoder(buf).Encode(raw)
+	if err != nil {
+		log.Printf("plots-marshal: %v", err)
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+type ControlPlots struct {
+	update time.Time
 	tile   *hplot.TiledPlot
 }
 
@@ -43,9 +81,9 @@ func renderPlot(p *hplot.TiledPlot) string {
 	return string(out.Bytes())
 }
 
-func newPlots(data []sensors.Sensors) (Plots, error) {
+func newControlPlots(data []sensors.Sensors) (ControlPlots, error) {
 	var (
-		ps  Plots
+		ps  ControlPlots
 		err error
 	)
 
@@ -95,7 +133,7 @@ func newPlots(data []sensors.Sensors) (Plots, error) {
 	return ps, err
 }
 
-func (ps *Plots) MarshalJSON() ([]byte, error) {
+func (ps *ControlPlots) MarshalJSON() ([]byte, error) {
 	var raw struct {
 		Plot   string `json:"plot"`
 		Update string `json:"update"`

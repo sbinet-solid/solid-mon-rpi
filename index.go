@@ -14,11 +14,17 @@ const indexTmpl = `
 		function update(data) {
 			var p = null;
 			
+			p = document.getElementById("update-message");
+			p.innerHTML = "Last Update: <code>"+data.update+"</code>";
+
 			p = document.getElementById("sensor-plot");
 			p.innerHTML = data.plot;
 
-			p = document.getElementById("update-message");
-			p.innerHTML = "Last Update: <code>"+data.update+"</code>";
+			p = document.getElementById("fast-data");
+			p.innerHTML = "<pre>"+data.data+"</pre>";
+
+			p = document.getElementById("sensor-plot-trends");
+			p.innerHTML = data.trends;
 		};
 
 		window.onload = function() {
@@ -39,15 +45,21 @@ const indexTmpl = `
 	</head>
 
 	<body>
-		<div id="header">
-			<h2>SoLiD sensors monitoring plots</h2>
-		</div>
+		<h2>SoLiD sensors monitoring plots ({{.Freq}} Hz)</h2>
 
-		<div id="plots">
+		<div id="fast-plots">
 			<div id="sensor-plot" class="solid-plot-style"></div>
 		</div>
+
 		<br>
 		<div id="update-message">Last Update: N/A
+		</div>
+		<div id="fast-data"></div>
+
+		<h2>SoLiD sensors monitoring plots (trends)</h2>
+
+		<div id="trend-plots">
+			<div id="sensor-plot-trends" class="solid-plot-style"></div>
 		</div>
 	</body>
 </html>

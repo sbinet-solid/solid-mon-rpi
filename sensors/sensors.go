@@ -134,22 +134,10 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 				}
 				data.Sensors = append(data.Sensors, Data{
 					Name:  d.Name,
-					Type:  Humidity,
-					Value: device.Hum,
-				})
-				data.Sensors = append(data.Sensors, Data{
-					Name:  d.Name,
 					Type:  Pressure,
 					Value: device.Pres,
 				})
-				data.Sensors = append(data.Sensors, Data{
-					Name:  d.Name,
-					Type:  Temperature,
-					Value: device.Temp,
-				})
-				data.Labels[d.Name] = append(data.Labels[d.Name], []Type{
-					Humidity, Pressure, Temperature,
-				}...)
+				data.Labels[d.Name] = append(data.Labels[d.Name], Pressure)
 			}
 			{
 				device := Tsl2591{}
