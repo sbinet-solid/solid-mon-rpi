@@ -8,9 +8,11 @@ package sensors
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"log"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/go-daq/smbus"
@@ -22,9 +24,40 @@ import (
 )
 
 type Descr struct {
-	Name   string `xml:"name,attr"`
-	ChanID int    `xml:"channel,attr"`
-	Type   string `xml:"type,attr"`
+	Name    string
+	ChanID  int
+	Type    string
+	I2CAddr uint8
+}
+
+func (d *Descr) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
+	var raw struct {
+		Name   string `xml:"name,attr"`
+		ChanID int    `xml:"channel,attr"`
+		Type   string `xml:"type,attr"`
+		Addr   string `xml:"i2c-addr,attr"`
+	}
+	err := dec.DecodeElement(&raw, &start)
+	if err != nil {
+		return err
+	}
+
+	d.Name = raw.Name
+	d.ChanID = raw.ChanID
+	d.Type = raw.Type
+	d.I2CAddr = 0
+	if raw.Addr != "" {
+		v, err := strconv.ParseUint(raw.Addr, 0, 64)
+		if err != nil {
+			return err
+		}
+		if v >= math.MaxUint8 {
+			return fmt.Errorf("sensors: address value overflows uint8 (got=%v)", v)
+		}
+		d.I2CAddr = uint8(v)
+	}
+
+	return nil
 }
 
 type Sensors struct {
@@ -96,7 +129,10 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 		switch d.Type {
 		case "AT30TSE":
 			device := At30tse75x{}
-			err := device.read(bus, addr, mux[d.ChanID])
+			if d.I2CAddr == 0 {
+				d.I2CAddr = at30tse75x.DefaultI2CAddr
+			}
+			err := device.read(bus, d.I2CAddr, addr, mux[d.ChanID])
 			if err != nil {
 				return data, err
 			}
@@ -226,15 +262,19 @@ type At30tse75x struct {
 	Temp float64 `json:"temp"`
 }
 
-func (at30 *At30tse75x) read(bus *smbus.Conn, addr uint8, ch uint8) error {
-	err := bus.WriteReg(addr, 0x04, ch)
+func (at30 *At30tse75x) read(bus *smbus.Conn, i2c, daddr uint8, ch uint8) error {
+	err := bus.WriteReg(daddr, 0x04, ch)
 	if err != nil {
 		log.Printf("at30tse-write-reg error: %v", err)
 		return err
 	}
 
-	const eeprom = 4
-	dev, err := at30tse75x.Open(bus, 0, eeprom)
+	dev, err := at30tse75x.Open(
+		bus,
+		at30tse75x.I2CAddr(i2c),
+		at30tse75x.DevAddr(daddr),
+		at30tse75x.EEPROM(4),
+	)
 	if err != nil {
 		log.Printf("at30tse-open-bus error: %v", err)
 		return err
