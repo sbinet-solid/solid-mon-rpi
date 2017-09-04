@@ -20,7 +20,7 @@ import (
 	"github.com/go-daq/smbus/sensor/bme280"
 	"github.com/go-daq/smbus/sensor/hts221"
 	"github.com/go-daq/smbus/sensor/tsl2591"
-	"github.com/gonum/plot/plotter"
+	"gonum.org/v1/plot/plotter"
 )
 
 type Descr struct {

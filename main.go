@@ -21,8 +21,8 @@ import (
 	"golang.org/x/net/websocket"
 
 	"github.com/go-daq/smbus"
-	"github.com/gonum/plot/palette/brewer"
 	"github.com/sbinet-solid/solid-mon-rpi/sensors"
+	"gonum.org/v1/plot/palette/brewer"
 )
 
 func main() {

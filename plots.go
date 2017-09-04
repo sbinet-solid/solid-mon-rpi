@@ -18,12 +18,12 @@ import (
 
 	"go-hep.org/x/hep/hplot"
 
-	"github.com/gonum/plot"
-	"github.com/gonum/plot/plotter"
-	"github.com/gonum/plot/vg"
-	"github.com/gonum/plot/vg/draw"
-	"github.com/gonum/plot/vg/vgsvg"
 	"github.com/sbinet-solid/solid-mon-rpi/sensors"
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/vg"
+	"gonum.org/v1/plot/vg/draw"
+	"gonum.org/v1/plot/vg/vgsvg"
 )
 
 var plotColors = make(map[string]color.Color)
