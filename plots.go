@@ -16,9 +16,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"go-hep.org/x/hep/hplot"
-
 	"github.com/sbinet-solid/solid-mon-rpi/sensors"
+	"go-hep.org/x/hep/hplot"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"

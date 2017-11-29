@@ -18,10 +18,9 @@ import (
 	"sort"
 	"time"
 
-	"golang.org/x/net/websocket"
-
 	"github.com/go-daq/smbus"
 	"github.com/sbinet-solid/solid-mon-rpi/sensors"
+	"golang.org/x/net/websocket"
 	"gonum.org/v1/plot/palette/brewer"
 )
 
