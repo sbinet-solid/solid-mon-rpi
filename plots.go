@@ -89,7 +89,7 @@ func newControlPlots(data []sensors.Sensors) (ControlPlots, error) {
 
 	ps.update = data[len(data)-1].Timestamp
 	const pad = 10
-	ps.tile, err = hplot.NewTiledPlot(draw.Tiles{
+	ps.tile = hplot.NewTiledPlot(draw.Tiles{
 		Cols:      3,
 		Rows:      2,
 		PadBottom: pad,
@@ -99,9 +99,6 @@ func newControlPlots(data []sensors.Sensors) (ControlPlots, error) {
 		PadX:      pad,
 		PadY:      pad,
 	})
-	if err != nil {
-		return ps, err
-	}
 
 	leg := ps.tile.Plot(0, 2)
 	leg.HideAxes()
