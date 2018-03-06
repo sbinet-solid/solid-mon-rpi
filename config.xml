@@ -3,5 +3,7 @@
 	<sensor name="Temperature sensor 1" channel="3" type="AT30TSE" i2c-addr="0x4c"/>
 	<sensor name="Humidity sensor 1"    channel="1" type="HTS221"/>
 	<sensor name="Onboard sensors"      channel="7" type="Onboard"/>
+	<sensor name="ADC-Voltage sensor"   channel="4" type="ADC101x" i2c-addr="0x4d" vdd="3.2" full-range="256"/>
+	<sensor name="Luminosity sensor"    channel="5" type="HTS221"  i2c-addr="0x5d"/>
 </data>
 
