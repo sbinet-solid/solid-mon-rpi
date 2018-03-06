@@ -60,7 +60,7 @@ func main() {
 
 		set := make(map[string]int)
 		for _, descr := range srv.bus.descr {
-			set[descr.Name] = 1
+			set[descr.Descr().Name] = 1
 		}
 		var labels []string
 		for k := range set {
@@ -87,12 +87,6 @@ func main() {
 		srv.quit <- 1
 		log.Fatalf("error running server: %v", err)
 	}
-}
-
-type Config struct {
-	XMLName xml.Name        `xml:"data"`
-	Sensors []sensors.Descr `xml:"sensor"`
-	Freq    time.Duration
 }
 
 type server struct {

@@ -8,57 +8,19 @@ package sensors
 import (
 	"bytes"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"log"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/go-daq/smbus"
+	"github.com/go-daq/smbus/sensor/adc101x"
 	"github.com/go-daq/smbus/sensor/at30tse75x"
 	"github.com/go-daq/smbus/sensor/bme280"
 	"github.com/go-daq/smbus/sensor/hts221"
 	"github.com/go-daq/smbus/sensor/tsl2591"
 	"gonum.org/v1/plot/plotter"
 )
-
-type Descr struct {
-	Name    string
-	ChanID  int
-	Type    string
-	I2CAddr uint8
-}
-
-func (d *Descr) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
-	var raw struct {
-		Name   string `xml:"name,attr"`
-		ChanID int    `xml:"channel,attr"`
-		Type   string `xml:"type,attr"`
-		Addr   string `xml:"i2c-addr,attr"`
-	}
-	err := dec.DecodeElement(&raw, &start)
-	if err != nil {
-		return err
-	}
-
-	d.Name = raw.Name
-	d.ChanID = raw.ChanID
-	d.Type = raw.Type
-	d.I2CAddr = 0
-	if raw.Addr != "" {
-		v, err := strconv.ParseUint(raw.Addr, 0, 64)
-		if err != nil {
-			return err
-		}
-		if v >= math.MaxUint8 {
-			return fmt.Errorf("sensors: address value overflows uint8 (got=%v)", v)
-		}
-		d.I2CAddr = uint8(v)
-	}
-
-	return nil
-}
 
 type Sensors struct {
 	Timestamp time.Time         `json:"timestamp"`
@@ -72,7 +34,7 @@ type Data struct {
 	Value float64 `json:"value"`
 }
 
-// Type describes the type of data sensor (H,P,T,L)
+// Type describes the type of data sensor (H,P,T,L,V)
 type Type uint8
 
 const (
@@ -81,6 +43,7 @@ const (
 	Pressure
 	Temperature
 	Luminosity
+	Voltage
 )
 
 func (t Type) String() string {
@@ -95,6 +58,8 @@ func (t Type) String() string {
 		return "temperature"
 	case Luminosity:
 		return "luminosity"
+	case Voltage:
+		return "voltage"
 	}
 	panic(fmt.Errorf("unknown sensor type %d", t))
 }
@@ -126,8 +91,24 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 		Labels:    make(map[string][]Type, len(descr)),
 	}
 	for _, d := range descr {
-		switch d.Type {
-		case "AT30TSE":
+		switch d := d.(type) {
+		case *DescrADC101x:
+			device := ADC101x{}
+			if d.Base.I2CAddr == 0 {
+				d.Base.I2CAddr = adc101x.DefaultI2CAddr
+			}
+			err := device.read(bus, d.Base.I2CAddr, addr, mux[d.Base.ChanID], 1024, 3.3)
+			if err != nil {
+				return data, err
+			}
+			data.Sensors = append(data.Sensors, Data{
+				Name:  d.Descr().Name,
+				Type:  Voltage,
+				Value: device.Voltage,
+			})
+			data.Labels[d.Descr().Name] = []Type{Voltage}
+
+		case *DescrAT30TSE:
 			device := At30tse75x{}
 			if d.I2CAddr == 0 {
 				d.I2CAddr = at30tse75x.DefaultI2CAddr
@@ -143,7 +124,7 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 			})
 			data.Labels[d.Name] = []Type{Temperature}
 
-		case "HTS221":
+		case *DescrHTS221:
 			device := Hts221{}
 			err := device.read(bus, addr, mux[d.ChanID])
 			if err != nil {
@@ -161,7 +142,7 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 			})
 			data.Labels[d.Name] = []Type{Humidity, Temperature}
 
-		case "Onboard":
+		case *DescrOnBoard:
 			{
 				device := Bme280{}
 				err := device.read(bus, addr, mux[d.ChanID])
@@ -256,6 +237,39 @@ func (bme *Bme280) read(bus *smbus.Conn, addr uint8, ch uint8) error {
 	bme.Temp = t
 
 	return err
+}
+
+type ADC101x struct {
+	Count   int     `json:"adc"`
+	Voltage float64 `json:"voltage"`
+}
+
+func (adc *ADC101x) read(bus *smbus.Conn, i2c, daddr uint8, ch uint8, frange int, vdd float64) error {
+	err := bus.WriteReg(daddr, 0x04, ch)
+	if err != nil {
+		log.Printf("adc101x-write-reg error: %v", err)
+		return err
+	}
+
+	dev, err := adc101x.Open(bus, ch, frange, vdd)
+	if err != nil {
+		log.Printf("adc101x-open-bus error: %v", err)
+		return err
+	}
+
+	count, err := dev.ADC()
+	if err != nil {
+		return err
+	}
+
+	voltage, err := dev.Voltage()
+	if err != nil {
+		return err
+	}
+
+	adc.Count = count
+	adc.Voltage = voltage
+	return nil
 }
 
 type At30tse75x struct {
