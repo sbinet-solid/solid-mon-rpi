@@ -67,7 +67,7 @@ func main() {
 			labels = append(labels, k)
 		}
 		sort.Strings(labels)
-		p, err := brewer.GetPalette(brewer.TypeAny, "Dark2", len(labels))
+		p, err := brewer.GetPalette(brewer.TypeAny, "Dark2", 8)
 		if err != nil {
 			log.Fatal(err)
 		}
