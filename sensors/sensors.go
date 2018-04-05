@@ -267,7 +267,7 @@ func (adc *ADC101x) read(bus *smbus.Conn, i2c, daddr uint8, ch uint8, frange int
 		return err
 	}
 
-	dev, err := adc101x.Open(bus, ch, frange, vdd)
+	dev, err := adc101x.Open(bus, i2c, frange, vdd)
 	if err != nil {
 		log.Printf("adc101x-open-bus error: %v", err)
 		return err
