@@ -144,7 +144,7 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 
 		case *DescrBME280:
 			device := Bme280{}
-			err := device.read(bus, addr, mux[d.ChanID])
+			err := device.read(bus, d.I2CAddr, addr, mux[d.ChanID])
 			if err != nil {
 				return data, err
 			}
@@ -158,7 +158,7 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 		case *DescrOnBoard:
 			{
 				device := Bme280{}
-				err := device.read(bus, addr, mux[d.ChanID])
+				err := device.read(bus, d.I2CAddr, addr, mux[d.ChanID])
 				if err != nil {
 					return data, err
 				}
@@ -225,16 +225,19 @@ type Bme280 struct {
 	Pres float64 `json:"pres"`
 }
 
-func (bme *Bme280) read(bus *smbus.Conn, addr uint8, ch uint8) error {
+func (bme *Bme280) read(bus *smbus.Conn, i2c, addr uint8, ch uint8) error {
 	err := bus.WriteReg(addr, 0x04, ch)
 	if err != nil {
 		log.Printf("write-reg error: %v", err)
 		return err
 	}
 
-	dev, err := bme280.Open(bus, bme280.I2CAddr, bme280.OpSample8)
+	if i2c == 0 {
+		i2c = bme280.I2CAddr
+	}
+	dev, err := bme280.Open(bus, i2c, bme280.OpSample8)
 	if err != nil {
-		log.Printf("open-bus error (i2c-addr=0x%x): %v", bme280.I2CAddr, err)
+		log.Printf("open-bus error (i2c-addr=0x%x): %v", i2c, err)
 		return err
 	}
 
