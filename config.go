@@ -49,6 +49,8 @@ func (cfg *Config) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error 
 				descr = new(sensors.DescrHTS221)
 			case "onboard":
 				descr = new(sensors.DescrOnBoard)
+			case "bme280":
+				descr = new(sensors.DescrBME280)
 			default:
 				return fmt.Errorf("sensors: invalid type %q", tname)
 			}

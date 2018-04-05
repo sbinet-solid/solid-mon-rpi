@@ -142,6 +142,19 @@ func New(bus *smbus.Conn, addr uint8, descr []Descr) (Sensors, error) {
 			})
 			data.Labels[d.Name] = []Type{Humidity, Temperature}
 
+		case *DescrBME280:
+			device := Bme280{}
+			err := device.read(bus, addr, mux[d.ChanID])
+			if err != nil {
+				return data, err
+			}
+			data.Sensors = append(data.Sensors, Data{
+				Name:  d.Name,
+				Type:  Pressure,
+				Value: device.Pres,
+			})
+			data.Labels[d.Name] = append(data.Labels[d.Name], Pressure)
+
 		case *DescrOnBoard:
 			{
 				device := Bme280{}

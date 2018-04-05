@@ -22,6 +22,7 @@ func TestConfigXML(t *testing.T) {
 	<sensor name="dev-4" channel="3" type="ADC101x" i2c-addr="0x4d" vdd="3.2" full-range="256"/>
 	<sensor name="dev-5" channel="3" type="HTS221"  i2c-addr="0x5d"/>
 	<sensor name="dev-6" channel="3" type="Onboard" i2c-addr="0x6d"/>
+	<sensor name="dev-7" channel="3" type="BME280"  i2c-addr="0x6d"/>
 </data>
 `
 
@@ -57,6 +58,9 @@ func TestConfigXML(t *testing.T) {
 		},
 		&sensors.DescrOnBoard{sensors.DescrBase{
 			Name: "dev-6", ChanID: 3, Type: "Onboard", I2CAddr: 0x6d},
+		},
+		&sensors.DescrBME280{sensors.DescrBase{
+			Name: "dev-7", ChanID: 3, Type: "BME280", I2CAddr: 0x6d},
 		},
 	}
 	if !reflect.DeepEqual(want, cfg.Sensors) {

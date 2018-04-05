@@ -106,3 +106,4 @@ func (d *DescrADC101x) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) er
 type DescrAT30TSE struct{ DescrBase }
 type DescrHTS221 struct{ DescrBase }
 type DescrOnBoard struct{ DescrBase }
+type DescrBME280 struct{ DescrBase }
