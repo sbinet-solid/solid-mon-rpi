@@ -3,4 +3,6 @@
         <sensor name="Humidity sensor 7" channel="4" type="HTS221"/>
         <sensor name="Humidity sensor 8" channel="5" type="HTS221"/>
         <sensor name="Onboard sensors 3" channel="7" type="Onboard"/>
+        <sensor name="Pressure sensor"   channel="5" type="BME280"  i2c-addr="0x4d"/>
+        <sensor name="ADC"               channel="2" type="ADC101x" i2c-addr="0x4d" vdd="3" full-range="256"/>
 </data>
