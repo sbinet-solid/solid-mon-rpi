@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<data>
+        <sensor name="Temperature sensor 1" channel="0" type="AT30TSE" i2c-addr="0x4b"/>
+        <sensor name="Humidity sensor 1"    channel="0" type="HTS221"/>
+        <sensor name="Temperature sensor 2" channel="0" type="AT30TSE" i2c-addr="0x4f"/>
+        <sensor name="Temperature sensor 11" channel="5" type="AT30TSE" i2c-addr="0x4a"/>
+        <sensor name="Humidity sensor 6"    channel="5" type="HTS221"/>
+        <sensor name="Humidity sensor 2"    channel="6" type="HTS221"/>
+        <sensor name="Temperature sensor 3" channel="6" type="AT30TSE" i2c-addr="0x4e"/>
+        <sensor name="Temperature sensor 4" channel="6" type="AT30TSE" i2c-addr="0x4d"/>
+        <sensor name="Onboard sensors 1"      channel="7" type="Onboard"/>
+</data>

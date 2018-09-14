@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<data>
+        <sensor name="Humidity sensor 7" channel="4" type="HTS221"/>
+        <sensor name="Humidity sensor 8" channel="5" type="HTS221"/>
+        <sensor name="Onboard sensors 3" channel="7" type="Onboard"/>
+</data>
