@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	bootCmdLine = "/tmp/boot/cmdline.txt" // FIXME(sbinet)
+	bootCmdLine = "/boot/cmdline.txt"
 )
 
 func main() {
