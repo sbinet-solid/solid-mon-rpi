@@ -154,6 +154,10 @@ func (srv *server) Freq() float64 {
 	return 1 / srv.freq.Seconds()
 }
 
+func (*server) Version() string {
+	return Version
+}
+
 func (srv *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	srv.wrap(srv.rootHandler)(w, r)
 }

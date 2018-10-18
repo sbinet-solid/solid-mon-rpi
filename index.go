@@ -52,6 +52,7 @@ const indexTmpl = `
 		</div>
 
 		<br>
+		<div>Server Version: {{.Version}}</div>
 		<div id="update-message">Last Update: N/A
 		</div>
 		<div id="fast-data"></div>
