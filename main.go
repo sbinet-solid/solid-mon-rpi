@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"time"
 
@@ -24,6 +25,10 @@ import (
 	"gonum.org/v1/plot/palette/brewer"
 )
 
+var (
+	Version = "dev"
+)
+
 func main() {
 	var (
 		addr    = flag.String("addr", ":8080", "[ip]:port for TCP server")
@@ -31,12 +36,18 @@ func main() {
 		busAddr = flag.Int("bus-addr", 0x70, "SMBus address to read/write")
 		freq    = flag.Duration("freq", 2*time.Second, "data polling interval")
 		cfgFlag = flag.String("cfg", "", "path to an XML configuration file for sensors")
+		version = flag.Bool("version", false, "display version and exit")
 	)
 
 	flag.Parse()
 
 	log.SetFlags(0)
 	log.SetPrefix("solid-mon-rpi ")
+
+	if *version {
+		fmt.Printf("solid-mon-rpi: version %s %s/%s\n", Version, runtime.GOOS, runtime.GOARCH)
+		os.Exit(0)
+	}
 
 	log.Printf("starting up web-server on: %v\n", *addr)
 	srv, err := newServer(*addr, *freq, *busID, *busAddr)

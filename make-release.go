@@ -8,10 +8,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func main() {
@@ -20,7 +22,10 @@ func main() {
 
 	flag.Parse()
 
-	tag := flag.Arg(0)
+	tag := version()
+	if flag.NArg() > 0 {
+		tag = flag.Arg(0)
+	}
 
 	os.Setenv("GO111MODULE", "on")
 
@@ -33,8 +38,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("create an ARM-based executable for RPi3...")
-	cmd := exec.Command("go", "build", "-v", "-o", oname)
+	log.Printf("create an ARM-based executable for RPi3... version=%q", tag)
+	cmd := exec.Command("go",
+		"build", "-v",
+		"-ldflags", fmt.Sprintf("-X main.Version=%q", tag),
+		"-o", oname,
+	)
 	cmd.Env = append([]string{
 		"GOARCH=arm",
 		"GOARM=7",
@@ -68,4 +77,18 @@ func run(cmd string, args ...string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func version() string {
+	tag, err := exec.Command("git", "describe", "--contains", "HEAD").Output()
+	if err == nil {
+		return strings.Trim(string(tag), "\n")
+	}
+
+	rev, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		log.Fatalf("could not retrieve current git revision: %v", err)
+	}
+
+	return strings.Trim(string(rev), "\n")
 }
