@@ -8,13 +8,12 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-
-	"github.com/pkg/errors"
 )
 
 const (
@@ -72,7 +71,7 @@ func cmdRO(host string) error {
 
 	ro, err := addOverlay(buf)
 	if err != nil {
-		return errors.Wrapf(err, "could not add boot=overlay to %s:%s", host, bootCmdLine)
+		return fmt.Errorf("could not add boot=overlay to %s:%s: %w", host, bootCmdLine, err)
 	}
 
 	err = putContent(host, ro)
@@ -91,7 +90,7 @@ func cmdRW(host string) error {
 
 	ro, err := removeOverlay(buf)
 	if err != nil {
-		return errors.Wrapf(err, "could not remove boot=overlay from %s:%s", host, bootCmdLine)
+		return fmt.Errorf("could not remove boot=overlay from %s:%s: %w", host, bootCmdLine, err)
 	}
 
 	err = putContent(host, ro)
@@ -109,7 +108,7 @@ func fetchContent(host string) ([]byte, error) {
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not extract %q from %q", bootCmdLine, host)
+		return nil, fmt.Errorf("could not extract %q from %q: %w", bootCmdLine, host, err)
 	}
 
 	log.Printf("content: %q", buf.String())
@@ -120,14 +119,14 @@ func fetchContent(host string) ([]byte, error) {
 func putContent(host string, data []byte) error {
 	tmp, err := ioutil.TempDir("", "solid-mgr-boot-")
 	if err != nil {
-		return errors.Wrapf(err, "could not create temporary directory")
+		return fmt.Errorf("could not create temporary directory: %w", err)
 	}
 	defer os.RemoveAll(tmp)
 
 	fname := filepath.Join(tmp, "cmdline.txt")
 	err = ioutil.WriteFile(fname, data, 0644)
 	if err != nil {
-		return errors.Wrapf(err, "could not create new ro cmdline.txt file")
+		return fmt.Errorf("could not create new ro cmdline.txt file: %w", err)
 	}
 
 	cmd := exec.Command("scp", fname, host+":"+bootCmdLine)

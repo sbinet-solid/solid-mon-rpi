@@ -4,7 +4,6 @@ go 1.20
 
 require (
 	github.com/go-daq/smbus v0.0.0-20201216173259-5725b4593606
-	github.com/pkg/errors v0.9.1
 	go-hep.org/x/hep v0.32.1
 	golang.org/x/net v0.8.0
 	gonum.org/v1/plot v0.12.0
