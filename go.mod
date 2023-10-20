@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/go-daq/smbus v0.0.0-20201216173259-5725b4593606
 	go-hep.org/x/hep v0.32.1
-	golang.org/x/net v0.8.0
+	golang.org/x/net v0.17.0
 	gonum.org/v1/plot v0.12.0
 )
 
@@ -22,7 +22,7 @@ require (
 	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/image v0.6.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/text v0.8.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	gonum.org/v1/gonum v0.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
